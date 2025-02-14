@@ -8,7 +8,7 @@ import vscode from 'vscode'
 import { qTestingFramework } from './framework/framework'
 import sinon from 'sinon'
 import { Messenger } from './framework/messenger'
-import { FollowUpTypes } from 'aws-core-vscode/amazonq'
+import { DefaultAmazonQAppInitContext, FollowUpTypes } from 'aws-core-vscode/amazonq'
 import { registerAuthHook, using, TestFolder, closeAllEditors } from 'aws-core-vscode/test'
 import { loginToIdC } from './utils/setup'
 import { waitUntil, workspaceUtils } from 'aws-core-vscode/shared'
@@ -75,6 +75,10 @@ describe('Amazon Q Test Generation', function () {
     })
 
     beforeEach(async () => {
+        await waitUntil(
+            async () => DefaultAmazonQAppInitContext.instance.getAppsToWebViewMessagePublisher().setUiReady(),
+            {}
+        )
         registerAuthHook('amazonq-test-account')
         framework = new qTestingFramework('testgen', true, [])
         tab = framework.createTab()
@@ -163,9 +167,7 @@ describe('Amazon Q Test Generation', function () {
         })
 
         for (const { language, filePath } of testFiles) {
-            // skipping for now since this test is flaky. passes locally, but only half the time in CI
-            // have tried retries for setupTestDocument, openTextDocument, and showTextDocument
-            describe.skip(`${language} file`, () => {
+            describe(`${language} file`, () => {
                 beforeEach(async () => {
                     await waitUntil(async () => await setupTestDocument(filePath, language), {})
 
