@@ -11,7 +11,9 @@ import * as codeWhisperer from '../client/codewhisperer'
 import CodeWhispererUserClient, {
     ArtifactMap,
     CreateUploadUrlRequest,
+    PackageInfoList,
     TargetCode,
+    TargetFileInfo,
 } from '../client/codewhispereruserclient'
 import {
     CreateTestJobError,
@@ -156,10 +158,17 @@ export async function pollTestJobStatus(
             status: 'InProgress',
             progressRate,
         })
+        let shortAnswer: ShortAnswer | undefined
+        const packageInfoList = resp.testGenerationJob?.packageInfoList
         const shortAnswerString = resp.testGenerationJob?.shortAnswer
+
         if (shortAnswerString) {
             const parsedShortAnswer = JSON.parse(shortAnswerString)
-            const shortAnswer: ShortAnswer = JSON.parse(parsedShortAnswer)
+            shortAnswer = JSON.parse(parsedShortAnswer)
+        } else if (packageInfoList && packageInfoList.length > 0) {
+            shortAnswer = extractShortAnswer(packageInfoList)
+        }
+        if (shortAnswer) {
             // Stop the Unit test generation workflow if IDE receive stopIteration = true
             if (shortAnswer.stopIteration === 'true') {
                 session.stopIteration = true
@@ -211,6 +220,43 @@ export async function pollTestJobStatus(
         }
     }
     return status
+}
+
+function extractShortAnswer(packageInfoList: PackageInfoList) {
+    const shortAnswer: any = {
+        testFilePath: '',
+        buildCommands: [],
+        planSummary: '',
+    }
+    // TODO: currently only single file and single package, but will eventually need to support multi file for multi package
+    const packageInfo = packageInfoList[0]
+    const targetFileInfo = packageInfo?.targetFileInfoList?.[0]
+
+    if (packageInfo && packageInfo.buildCommand) {
+        shortAnswer.buildCommands.push(packageInfo.buildCommand)
+    }
+    if (packageInfo && packageInfo.executionCommand) {
+        shortAnswer.executionCommands ??= []
+        shortAnswer.executionCommands.push(packageInfo.executionCommand)
+    }
+
+    if (targetFileInfo) {
+        const fileFieldMappings: Record<string, keyof ShortAnswer> = {
+            filePath: 'sourceFilePath',
+            testFilePath: 'testFilePath',
+            testCoverage: 'testCoverage',
+            filePlan: 'planSummary',
+            codeReferences: 'codeReferences',
+            numberOfTestMethods: 'numberOfTestMethods',
+        }
+        for (const [sourceKey, targetKey] of Object.entries(fileFieldMappings)) {
+            const value = targetFileInfo[sourceKey as keyof TargetFileInfo]
+            if (value !== undefined) {
+                shortAnswer[targetKey as keyof ShortAnswer] = value
+            }
+        }
+    }
+    return shortAnswer
 }
 
 /**
