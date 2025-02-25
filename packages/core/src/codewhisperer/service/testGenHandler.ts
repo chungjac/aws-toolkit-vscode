@@ -153,7 +153,7 @@ export async function pollTestJobStatus(
         const progressRate = resp.testGenerationJob?.progressRate ?? 0
         testGenState.getChatControllers()?.sendUpdatePromptProgress.fire({
             tabID: ChatSessionManager.Instance.getSession().tabID,
-            status: 'InProgress',
+            status: 'InProgress', // fixing tests
             progressRate,
         })
         const shortAnswerString = resp.testGenerationJob?.shortAnswer
