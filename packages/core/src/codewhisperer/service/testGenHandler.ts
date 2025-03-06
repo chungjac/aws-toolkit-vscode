@@ -158,17 +158,15 @@ export async function pollTestJobStatus(
             status: 'InProgress',
             progressRate,
         })
-        let shortAnswer: ShortAnswer | undefined
         const packageInfoList = resp.testGenerationJob?.packageInfoList
         const shortAnswerString = resp.testGenerationJob?.shortAnswer
 
+        if (packageInfoList && packageInfoList.length > 0) {
+            const temp = extractShortAnswer(packageInfoList)
+        }
         if (shortAnswerString) {
             const parsedShortAnswer = JSON.parse(shortAnswerString)
-            shortAnswer = JSON.parse(parsedShortAnswer)
-        } else if (packageInfoList && packageInfoList.length > 0) {
-            shortAnswer = extractShortAnswer(packageInfoList)
-        }
-        if (shortAnswer) {
+            const shortAnswer: ShortAnswer = JSON.parse(parsedShortAnswer)
             // Stop the Unit test generation workflow if IDE receive stopIteration = true
             if (shortAnswer.stopIteration === 'true') {
                 session.stopIteration = true
