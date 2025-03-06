@@ -158,12 +158,11 @@ export async function pollTestJobStatus(
             status: 'InProgress',
             progressRate,
         })
-        const packageInfoList = resp.testGenerationJob?.packageInfoList
-        const shortAnswerString = resp.testGenerationJob?.shortAnswer
+        const packageInfoList = resp.testGenerationJob?.packageInfoList ?? []
+        const packageInfo = packageInfoList[0]
+        const targetFileInfo = packageInfo?.targetFileInfoList?.[0]
 
-        if (packageInfoList && packageInfoList.length > 0) {
-            const temp = extractShortAnswer(packageInfoList)
-        }
+        const shortAnswerString = resp.testGenerationJob?.shortAnswer
         if (shortAnswerString) {
             const parsedShortAnswer = JSON.parse(shortAnswerString)
             const shortAnswer: ShortAnswer = JSON.parse(parsedShortAnswer)
