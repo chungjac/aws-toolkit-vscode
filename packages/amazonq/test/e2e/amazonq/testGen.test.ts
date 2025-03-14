@@ -11,7 +11,7 @@ import { Messenger } from './framework/messenger'
 import { FollowUpTypes } from 'aws-core-vscode/amazonq'
 import { registerAuthHook, using, TestFolder, closeAllEditors, getTestWorkspaceFolder } from 'aws-core-vscode/test'
 import { loginToIdC } from './utils/setup'
-import { waitUntil, workspaceUtils } from 'aws-core-vscode/shared'
+import { waitUntil, workspaceUtils, isWin } from 'aws-core-vscode/shared'
 import * as path from 'path'
 
 describe('Amazon Q Test Generation', function () {
@@ -72,13 +72,13 @@ describe('Amazon Q Test Generation', function () {
         })
     }
 
-    // clears test file to a blank file
+    // updates test file with given content
     // not cleaning up test file may possibly cause bloat in CI since testFixtures does not get reset
-    async function cleanupTestFile(testFilePath: string) {
+    async function updateTestFile(testFilePath: string, content: string) {
         const workspaceFolder = getTestWorkspaceFolder()
         const absoluteTestFilePath = path.join(workspaceFolder, testFilePath)
         const testFileUri = vscode.Uri.file(absoluteTestFilePath)
-        await vscode.workspace.fs.writeFile(testFileUri, Buffer.from('', 'utf-8'))
+        await vscode.workspace.fs.writeFile(testFileUri, Buffer.from(content, 'utf-8'))
     }
 
     before(async function () {
@@ -175,6 +175,89 @@ describe('Amazon Q Test Generation', function () {
             })
         })
 
+        describe('Build and execute flow', () => {
+            const language = 'java'
+            const filePath = 'testGenFolder/gradle-test-project/app/src/main/java/org/example/App.java'
+            const testFilePath = 'testGenFolder/gradle-test-project/app/src/test/java/org/example/AppTest.java'
+            const buildCommand = isWin()
+                ? 'cd \\testGenFolder\\gradle-test-project && gradlew.bat build'
+                : 'cd /testGenFolder/gradle-test-project && ./gradlew build'
+            const happyTestFileContents = `package org.example;
+import org.junit.Test;
+import static org.junit.Assert.*;
+
+public class AppTest {
+    @Test public void appHasAGreeting() {
+        App classUnderTest = new App();
+        assertNotNull("app should have a greeting", classUnderTest.getGreeting());
+    }
+}`
+            // const sadTestFileContents = `package org.example;
+            //     import org.junit.Test;
+            //     import static org.junit.Assert.*;
+
+            //     public class AppTest {
+            //         @Test public void appHasAGreeting() {
+            //             App classUnderTest = new App();
+            //             assertNotNull("app should have a greeting", classUnderTest.getGreeting());
+            //         }
+            //         words here cause an error so delete this
+            //     }`
+
+            beforeEach(async () => {
+                await waitUntil(async () => await setupTestDocument(filePath, language), {})
+
+                tab.addChatMessage({ command: '/test' })
+                await tab.waitForChatFinishesLoading()
+
+                await tab.waitForButtons([FollowUpTypes.ViewDiff])
+                tab.clickButton(FollowUpTypes.ViewDiff)
+                await tab.waitForChatFinishesLoading()
+
+                await tab.waitForButtons([FollowUpTypes.AcceptCode, FollowUpTypes.RejectCode])
+                tab.clickButton(FollowUpTypes.AcceptCode)
+                await tab.waitForChatFinishesLoading()
+
+                await tab.waitForButtons([
+                    FollowUpTypes.BuildAndExecute,
+                    FollowUpTypes.ModifyCommands,
+                    FollowUpTypes.SkipBuildAndFinish,
+                ])
+                tab.clickButton(FollowUpTypes.ModifyCommands)
+                await tab.waitForChatFinishesLoading()
+            })
+
+            afterEach(async () => {
+                // this e2e test generates unit tests, so we want to replace original test file contents
+                await waitUntil(async () => {
+                    await updateTestFile(testFilePath, happyTestFileContents)
+                }, {})
+            })
+
+            it(`Build and execute successful after first iteration`, async () => {
+                // replace with happy code, so the build is guaranteed to be sucessful
+                await waitUntil(async () => {
+                    await updateTestFile(testFilePath, happyTestFileContents)
+                }, {})
+
+                tab.addChatMessage({ prompt: buildCommand })
+                await tab.waitForChatFinishesLoading()
+
+                await waitForChatItems(13)
+                const completeMessage = tab.getChatItems()[13]
+
+                assert.deepStrictEqual(completeMessage?.type, 'answer')
+                assert.deepStrictEqual(completeMessage?.body, 'Unit test generation workflow is complete.')
+            })
+
+            // it(`Build and execute successful after second iteration`, async () => {
+            //     // replace with sad code
+            //     // enter correct build command
+            //     // go through process again and then replace with happy code
+            //     // check that chatitems has correct item
+            // })
+        })
+
         for (const { language, filePath, testFilePath } of testFiles) {
             describe(`/test on ${language} file`, () => {
                 beforeEach(async () => {
@@ -205,7 +288,7 @@ describe('Amazon Q Test Generation', function () {
                     afterEach(async () => {
                         // this e2e test generates unit tests, so we want to clean them up after this test is done
                         await waitUntil(async () => {
-                            await cleanupTestFile(testFilePath)
+                            await updateTestFile(testFilePath, '')
                         }, {})
                     })
 
